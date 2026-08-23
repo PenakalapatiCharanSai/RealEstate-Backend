@@ -17,6 +17,10 @@ class Config:
     CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
     CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
 
+    # Transactional Email HTTP API Keys (HTTPS Port 443 - Bypasses Render Outbound SMTP Port Blocks)
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+    BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+
     # Gmail SMTP Email Configuration
     SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
@@ -24,4 +28,3 @@ class Config:
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "HavenSpace Real Estate")
     EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", os.getenv("SMTP_USERNAME", "havenspace.marketplace@gmail.com"))
-
