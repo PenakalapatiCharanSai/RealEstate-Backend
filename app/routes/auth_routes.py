@@ -382,19 +382,12 @@ def login():
             "message": "Please complete your registration email OTP verification before signing in."
         }), 403
 
-    # Agent admin approval guard
-    if user.get("status") == "pending_approval":
-        return jsonify({
-            "success": False,
-            "error": "Pending Approval",
-            "message": "Your agent account is currently pending administrator approval."
-        }), 403
-
-    if user.get("status") != "active":
+    # Allow active accounts and pending_approval agent accounts to log in (agents can view dashboard/profile)
+    if user.get("status") not in ["active", "pending_approval"]:
         return jsonify({
             "success": False,
             "error": "Forbidden",
-            "message": "Account is inactive. Please contact support."
+            "message": "Account is inactive or suspended. Please contact support."
         }), 403
 
     user_id = str(user["_id"])

@@ -447,6 +447,14 @@ def create_property():
     if db is None:
         return jsonify({"success": False, "error": "Database Error", "message": "Database connection unavailable."}), 500
 
+    # Pending approval guard: Agents pending admin approval cannot submit new listings
+    if g.current_user.get("role") in ["agent", "owner"] and g.current_user.get("status") == "pending_approval":
+        return jsonify({
+            "success": False,
+            "error": "Pending Approval",
+            "message": "Your agent account is currently pending administrator approval. Adding new property listings will be activated once your account is approved."
+        }), 403
+
     current_user_id = ObjectId(g.current_user["_id"])
 
     # New properties created by agents/owners are ALWAYS 'Pending' approval
