@@ -1,4 +1,4 @@
-import os
+
 from app import create_app
 from app.config.config import Config
 
