@@ -59,11 +59,6 @@ def register():
     if db is None:
         return jsonify({"success": False, "error": "Database Error", "message": "Database connection unavailable."}), 500
 
-    # Duplicate normalized email check
-    existing_user = db.users.find_one({"email": email})
-    if existing_user:
-        return jsonify({"success": False, "error": "Conflict", "message": "An account with this email address already exists."}), 400
-
     hashed_pw = hash_password(password)
 
     # Secure 6-digit numeric OTP generation using secrets module
@@ -72,6 +67,55 @@ def register():
     now = datetime.now(timezone.utc)
     otp_expires_at = now + timedelta(minutes=10)
 
+    # Check for existing user account
+    existing_user = db.users.find_one({"email": email})
+    if existing_user:
+        is_already_verified = bool(existing_user.get("email_verified") or existing_user.get("is_verified") or existing_user.get("status") in ["active", "pending_approval"])
+        if is_already_verified:
+            return jsonify({"success": False, "error": "Conflict", "message": "An account with this email address already exists. Please log in."}), 400
+        
+        # Unverified account exists: Update credentials and re-issue a fresh OTP
+        db.users.update_one(
+            {"_id": existing_user["_id"]},
+            {
+                "$set": {
+                    "name": name,
+                    "password": hashed_pw,
+                    "phone": phone,
+                    "role": role,
+                    "status": "pending_verification",
+                    "email_verified": False,
+                    "is_verified": False,
+                    "otp_hash": otp_hash,
+                    "otp_expires_at": otp_expires_at,
+                    "otp_attempts": 0,
+                    "last_otp_sent_at": now,
+                    "updated_at": now
+                },
+                "$unset": {"otp_code": ""}
+            }
+        )
+
+        email_sent = True
+        try:
+            send_otp_email(user_email=email, user_name=name, otp_code=otp_code)
+        except Exception as mail_err:
+            email_sent = False
+            logger.error(f"[RE-REGISTRATION OTP EMAIL NOTICE] Error for {email}: {mail_err}")
+
+        print(f"\n==========================================")
+        print(f"[RE-REGISTER OTP CODE] Email: {email} | OTP: {otp_code}")
+        print(f"==========================================\n")
+
+        return jsonify({
+            "success": True,
+            "requires_otp": True,
+            "requiresVerification": True,
+            "email": email,
+            "message": "Unverified account found. A new 6-digit verification code has been sent to your email."
+        }), 200
+
+    # Create new user document for brand-new email registration
     try:
         user_doc = UserModel.create_document(
             name=name,
@@ -91,7 +135,7 @@ def register():
         result = db.users.insert_one(user_doc)
         user_id = str(result.inserted_id)
 
-        # Dispatch OTP Email asynchronously via Gmail SMTP
+        # Dispatch OTP Email via Gmail SMTP
         email_sent = True
         try:
             send_otp_email(user_email=email, user_name=name, otp_code=otp_code)

@@ -418,5 +418,11 @@ def send_otp_email(user_email, user_name, otp_code):
 
     html = _get_base_template(subject, badge, body)
     text_body = f"Hello {user_name},\n\nWelcome to HavenSpace Real Estate Marketplace.\n\nYour email verification code is: {otp_code}\n\nThis code expires in 10 minutes.\n\nFor your security:\n- Do not share this code with anyone.\n- HavenSpace will never ask for your OTP.\n\nIf you did not create this account, you can safely ignore this email."
-    return send_email_async(user_email, subject, html, text_body)
+    
+    # Try synchronous fast dispatch first for guaranteed delivery on cloud hosts like Render
+    res = send_email(user_email, subject, html, text_body)
+    if not res.get("success"):
+        logger.warning(f"[SEND OTP DIRECT SYNC WARN] Direct send returned {res}. Queuing async fallback.")
+        return send_email_async(user_email, subject, html, text_body)
+    return res
 
