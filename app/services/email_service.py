@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 def send_email(to, subject, html, text=None):
     """
-    Core Reusable Synchronous Email Dispatch Function using Gmail / Standard SMTP.
+    High-Speed Dual-Port (SSL 465 / TLS 587) Synchronous Email Dispatch.
+    Tries SSL port 465 first for fastest delivery, falls back to TLS port 587.
     
     Parameters:
       - to (str or list): Recipient email address or list of addresses
@@ -22,7 +23,7 @@ def send_email(to, subject, html, text=None):
       dict: {"success": True} or {"success": False, "error": "details"}
     """
     smtp_host = Config.SMTP_HOST or "smtp.gmail.com"
-    smtp_port = getattr(Config, "SMTP_PORT", 587) or 587
+    configured_port = int(getattr(Config, "SMTP_PORT", 465) or 465)
     smtp_user = Config.SMTP_USERNAME
     smtp_pass = Config.SMTP_PASSWORD
 
@@ -42,37 +43,46 @@ def send_email(to, subject, html, text=None):
         logger.error(f"[SMTP ERROR] Invalid recipient address provided: {to}")
         return {"success": False, "error": "No valid recipient email address provided."}
 
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_header
+    msg["To"] = ", ".join(recipients)
+
+    if text:
+        msg.attach(MIMEText(text, "plain"))
+    if html:
+        msg.attach(MIMEText(html, "html"))
+
+    # Attempt 1: Direct SSL Port 465 (Ultra-Fast Connection)
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = from_header
-        msg["To"] = ", ".join(recipients)
+        server = smtplib.SMTP_SSL(smtp_host, 465, timeout=8)
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(sender_address, recipients, msg.as_string())
+        server.quit()
+        logger.info(f"[SMTP SUCCESS - SSL 465] Email '{subject}' instantly sent to {recipients}.")
+        return {"success": True}
+    except Exception as ssl_err:
+        logger.warning(f"[SMTP SSL 465 WARN] Port 465 failed ({ssl_err}). Retrying via TLS Port 587...")
 
-        if text:
-            msg.attach(MIMEText(text, "plain"))
-        if html:
-            msg.attach(MIMEText(html, "html"))
-
-        # Connect to Gmail / SMTP server with STARTTLS
-        server = smtplib.SMTP(smtp_host, int(smtp_port), timeout=15)
+    # Attempt 2: TLS Port 587 Fallback
+    try:
+        server = smtplib.SMTP(smtp_host, 587, timeout=8)
         server.starttls()
         server.login(smtp_user, smtp_pass)
         server.sendmail(sender_address, recipients, msg.as_string())
         server.quit()
-
-        logger.info(f"[SMTP SUCCESS] Email '{subject}' successfully sent to {recipients} via {smtp_host}.")
+        logger.info(f"[SMTP SUCCESS - TLS 587] Email '{subject}' successfully sent to {recipients}.")
         return {"success": True}
-
-    except Exception as e:
-        error_msg = str(e)
+    except Exception as tls_err:
+        error_msg = f"SSL 465 and TLS 587 failed: {str(tls_err)}"
         logger.error(f"[SMTP FAILURE] Exception sending email '{subject}' to {recipients}: {error_msg}")
         return {"success": False, "error": error_msg}
 
 
 def send_email_async(to, subject, html, text=None):
     """
-    Non-blocking Asynchronous Email Dispatch.
-    Spawns a background daemon thread to send email without delaying API responses.
+    Non-blocking High-Priority Asynchronous Email Dispatch.
+    Spawns a dedicated daemon thread to send email instantly in the background without delaying API responses.
     """
     def _worker():
         try:
@@ -80,6 +90,6 @@ def send_email_async(to, subject, html, text=None):
         except Exception as e:
             logger.error(f"[SMTP ASYNC ERROR] Background thread error for '{subject}': {e}")
 
-    thread = threading.Thread(target=_worker, daemon=True)
+    thread = threading.Thread(target=_worker, name=f"email-worker-{to}", daemon=True)
     thread.start()
     return {"success": True, "message": "Email dispatch queued in background."}
