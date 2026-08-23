@@ -14,8 +14,8 @@ def send_email(to, subject, html, text=None):
     """
     Multi-Provider Universal Email Dispatch Function.
     
-    1. Tries Resend HTTP REST API (Port 443) if RESEND_API_KEY is configured.
-    2. Tries Brevo HTTP REST API (Port 443) if BREVO_API_KEY is configured.
+    1. Tries Brevo HTTP REST API (Port 443 - High Priority, Render Unblocked).
+    2. Tries Resend HTTP REST API (Port 443 - Fallback).
     3. Tries Gmail / Standard SMTP (SSL 465 -> TLS 587 -> 25) as primary/fallback.
     
     Returns:
@@ -35,12 +35,40 @@ def send_email(to, subject, html, text=None):
         return {"success": False, "error": "No valid recipient email address provided."}
 
     # ==========================================
-    # METHOD 1: Resend HTTP REST API (Port 443 - Render Unblocked)
+    # METHOD 1: Brevo HTTP REST API (Port 443 - Render Unblocked)
+    # ==========================================
+    brevo_key = getattr(Config, "BREVO_API_KEY", "") or os.getenv("BREVO_API_KEY", "")
+    if brevo_key and brevo_key.strip():
+        try:
+            brevo_payload = {
+                "sender": {"name": sender_name, "email": sender_address},
+                "to": [{"email": r} for r in recipients],
+                "subject": subject,
+                "htmlContent": html
+            }
+            if text:
+                brevo_payload["textContent"] = text
+
+            resp = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                json=brevo_payload,
+                headers={"api-key": brevo_key.strip(), "accept": "application/json", "Content-Type": "application/json"},
+                timeout=10
+            )
+            if resp.status_code in [200, 201, 202]:
+                logger.info(f"[BREVO SUCCESS] Email '{subject}' delivered via Brevo HTTP API to {recipients}.")
+                return {"success": True}
+            else:
+                logger.warning(f"[BREVO HTTP WARN] Brevo API returned status {resp.status_code}: {resp.text}")
+        except Exception as brevo_err:
+            logger.warning(f"[BREVO EXCEPTION] {brevo_err}. Retrying via alternate providers...")
+
+    # ==========================================
+    # METHOD 2: Resend HTTP REST API (Port 443 - Render Unblocked)
     # ==========================================
     resend_key = getattr(Config, "RESEND_API_KEY", "") or os.getenv("RESEND_API_KEY", "")
     if resend_key and resend_key.strip():
         try:
-            # Note: onboarding@resend.dev works for testing to user email
             resend_sender = "HavenSpace <onboarding@resend.dev>" if "resend.dev" not in sender_address else from_header
             res_payload = {
                 "from": resend_sender,
@@ -61,36 +89,7 @@ def send_email(to, subject, html, text=None):
             else:
                 logger.warning(f"[RESEND HTTP WARN] Resend API returned status {resp.status_code}: {resp.text}")
         except Exception as resend_err:
-            logger.warning(f"[RESEND EXCEPTION] {resend_err}. Retrying via alternate providers...")
-
-    # ==========================================
-    # METHOD 2: Brevo HTTP REST API (Port 443 - Render Unblocked)
-    # ==========================================
-    brevo_key = getattr(Config, "BREVO_API_KEY", "") or os.getenv("BREVO_API_KEY", "")
-    if brevo_key and brevo_key.strip():
-        try:
-            brevo_payload = {
-                "sender": {"name": sender_name, "email": sender_address},
-                "to": [{"email": r} for r in recipients],
-                "subject": subject,
-                "htmlContent": html
-            }
-            if text:
-                brevo_payload["textContent"] = text
-
-            resp = requests.post(
-                "https://api.brevo.com/v3/smtp/email",
-                json=brevo_payload,
-                headers={"api-key": brevo_key.strip(), "Content-Type": "application/json"},
-                timeout=10
-            )
-            if resp.status_code in [200, 201, 202]:
-                logger.info(f"[BREVO SUCCESS] Email '{subject}' delivered via Brevo HTTP API to {recipients}.")
-                return {"success": True}
-            else:
-                logger.warning(f"[BREVO HTTP WARN] Brevo API returned status {resp.status_code}: {resp.text}")
-        except Exception as brevo_err:
-            logger.warning(f"[BREVO EXCEPTION] {brevo_err}. Retrying via Gmail SMTP...")
+            logger.warning(f"[RESEND EXCEPTION] {resend_err}. Retrying via Gmail SMTP...")
 
     # ==========================================
     # METHOD 3: Gmail / Standard SMTP Dispatch
@@ -137,7 +136,7 @@ def send_email(to, subject, html, text=None):
         if "Network is unreachable" in err_str or "101" in err_str:
             logger.error(
                 f"[RENDER PORT BLOCK DETECTED] Render has restricted raw outbound SMTP ports 465/587. "
-                f"To enable 100% free HTTP email delivery on Render (Port 443), set 'RESEND_API_KEY' or 'BREVO_API_KEY' in your Render Environment Variables."
+                f"To enable 100% free HTTP email delivery on Render (Port 443), set 'BREVO_API_KEY' or 'RESEND_API_KEY' in your Render Environment Variables."
             )
         error_msg = f"SSL 465 and TLS 587 failed: {err_str}"
         return {"success": False, "error": error_msg}
