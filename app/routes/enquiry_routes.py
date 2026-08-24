@@ -412,3 +412,88 @@ def update_enquiry_status(enquiry_id):
             "enquiry": format_enquiry(updated_doc, prop_map, user_map)
         }
     }), 200
+
+
+@enquiry_bp.route("/contact", methods=["POST"])
+def submit_general_contact():
+    """
+    Public General Contact Form Endpoint.
+    Receives name, email, phone, subject, message.
+    Sends notification email to HavenSpace support and a confirmation email to the sender.
+    """
+    data = request.get_json() or {}
+    name = str(data.get("name", "")).strip()
+    email = str(data.get("email", "")).strip()
+    phone = str(data.get("phone", "")).strip()
+    subject = str(data.get("subject", "")).strip() or "General Platform Inquiry"
+    message = str(data.get("message", "")).strip()
+
+    if not name:
+        return jsonify({"success": False, "error": "Validation Error", "message": "Name is required."}), 400
+
+    if not email or "@" not in email:
+        return jsonify({"success": False, "error": "Validation Error", "message": "A valid email address is required."}), 400
+
+    if not message:
+        return jsonify({"success": False, "error": "Validation Error", "message": "Message content is required."}), 400
+
+    db = get_db()
+    if db is None:
+        return jsonify({"success": False, "error": "Database Error", "message": "Database connection unavailable."}), 500
+
+    doc = {
+        "customer_name": name,
+        "customer_email": email,
+        "phone": phone,
+        "subject": subject,
+        "message": message,
+        "type": "general_contact",
+        "status": "new",
+        "created_at": datetime.now(timezone.utc)
+    }
+
+    res = db.enquiries.insert_one(doc)
+
+    # 1. Send Email Notification to HavenSpace Team
+    support_email = "havenspace.marketplace@gmail.com"
+    support_html = f"""
+    <div style='font-family: Arial, sans-serif; padding: 20px; color: #1e293b;'>
+      <h2 style='color: #059669;'>New Platform Contact Message</h2>
+      <p><strong>Sender Name:</strong> {name}</p>
+      <p><strong>Sender Email:</strong> {email}</p>
+      <p><strong>Phone:</strong> {phone or 'Not Provided'}</p>
+      <p><strong>Subject:</strong> {subject}</p>
+      <hr style='border: 1px solid #e2e8f0; margin: 15px 0;' />
+      <p><strong>Message:</strong></p>
+      <blockquote style='background: #f8fafc; padding: 15px; border-left: 4px solid #059669; margin: 0;'>{message}</blockquote>
+    </div>
+    """
+    try:
+        from app.services.email_service import send_email
+        send_email(to=support_email, subject=f"[HavenSpace Contact] {subject}", html=support_html)
+    except Exception as e:
+        print("Support email dispatch error:", e)
+
+    # 2. Send Confirmation Email to User
+    user_html = f"""
+    <div style='font-family: Arial, sans-serif; padding: 20px; color: #1e293b;'>
+      <h2 style='color: #059669;'>Thank you for reaching out to HavenSpace!</h2>
+      <p>Dear {name},</p>
+      <p>We have received your message regarding <strong>"{subject}"</strong>.</p>
+      <p>Our support team is reviewing your message and will reply directly to {email} shortly.</p>
+      <hr style='border: 1px solid #e2e8f0; margin: 15px 0;' />
+      <p style='color: #64748b; font-size: 13px;'><strong>Your Submitted Message:</strong><br/>{message}</p>
+      <br/>
+      <p>Best regards,<br/><strong>HavenSpace Real Estate Marketplace</strong></p>
+    </div>
+    """
+    try:
+        from app.services.email_service import send_email
+        send_email(to=email, subject="We received your message - HavenSpace Marketplace", html=user_html)
+    except Exception as e:
+        print("User confirmation email error:", e)
+
+    return jsonify({
+        "success": True,
+        "message": "Thank you! Your message has been sent successfully. We will get back to you shortly."
+    }), 200
