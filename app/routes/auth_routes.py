@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
-PUBLIC_ALLOWED_ROLES = ["customer", "agent", "owner"]
+PUBLIC_ALLOWED_ROLES = ["customer", "agent"]
 
 def hash_otp_code(code_str):
     """Utility to compute SHA-256 hash of a 6-digit OTP code."""
@@ -421,7 +421,10 @@ def get_profile():
 
 @auth_bp.route("/forgot-password", methods=["POST"])
 def forgot_password():
-    """Password Reset Request Endpoint"""
+    """
+    Public Password Reset Request Endpoint (All Roles)
+    Sends 6-digit OTP code to the requested user email.
+    """
     data = request.get_json() or {}
     email = str(data.get("email", "")).strip().lower()
 
@@ -434,57 +437,100 @@ def forgot_password():
 
     user = db.users.find_one({"email": email})
     if user:
-        user_id = str(user["_id"])
-        role = user.get("role", "customer")
-        reset_token = generate_token(user_id, role)
-        
+        otp_code = f"{secrets.randbelow(1000000):06d}"
+        otp_hash = hash_otp_code(otp_code)
+        now = datetime.now(timezone.utc)
+        otp_expires_at = now + timedelta(minutes=15)
+
+        db.users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "reset_otp_hash": otp_hash,
+                    "reset_otp_expires_at": otp_expires_at,
+                    "updated_at": now
+                }
+            }
+        )
+
         try:
-            send_password_reset_email(
-                user_email=email,
-                user_name=user.get("name", "Valued User"),
-                reset_token=reset_token
-            )
+            from app.services.notification_service import send_otp_email
+            send_otp_email(user_email=email, user_name=user.get("name", "User"), otp_code=otp_code)
         except Exception as mail_err:
-            logger.error(f"[FORGOT PASSWORD EMAIL NOTICE] Failed to dispatch reset email to {email}: {mail_err}")
+            logger.error(f"[FORGOT PASSWORD EMAIL NOTICE] Failed to send OTP email to {email}: {mail_err}")
 
     return jsonify({
         "success": True,
-        "message": "If an account with that email exists, a password reset link has been sent."
+        "message": "If an account with that email exists, a password reset OTP code has been sent."
     }), 200
 
 
 @auth_bp.route("/reset-password", methods=["POST"])
 def reset_password():
-    """Password Reset Completion Endpoint"""
+    """
+    Password Reset Completion Endpoint (All Roles)
+    Verifies 6-digit OTP code or reset token and updates the user's password.
+    """
     data = request.get_json() or {}
+    email = str(data.get("email", "")).strip().lower()
+    otp = str(data.get("otp", "")).strip()
     token = str(data.get("token", "")).strip()
     new_password = str(data.get("new_password", ""))
 
-    if not token:
-        return jsonify({"success": False, "error": "Validation Error", "message": "Reset token is required."}), 400
-
     if not new_password or len(new_password) < 6:
         return jsonify({"success": False, "error": "Validation Error", "message": "New password must be at least 6 characters long."}), 400
-
-    payload = decode_token(token)
-    if not payload:
-        return jsonify({"success": False, "error": "Unauthorized", "message": "Invalid or expired password reset token."}), 401
-
-    user_id = payload.get("sub")
-    if not user_id:
-        return jsonify({"success": False, "error": "Unauthorized", "message": "Invalid reset token."}), 401
 
     db = get_db()
     if db is None:
         return jsonify({"success": False, "error": "Database Error", "message": "Database connection unavailable."}), 500
 
-    hashed_pw = hash_password(new_password)
-    result = db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"password": hashed_pw}})
+    target_user = None
 
-    if result.matched_count == 0:
-        return jsonify({"success": False, "error": "Not Found", "message": "User account not found."}), 404
+    # Option A: OTP verification
+    if email and otp:
+        user = db.users.find_one({"email": email})
+        if not user:
+            return jsonify({"success": False, "error": "Validation Error", "message": "Invalid email or OTP code."}), 400
+
+        reset_hash = user.get("reset_otp_hash")
+        reset_expires = user.get("reset_otp_expires_at")
+        now = datetime.now(timezone.utc)
+
+        if not reset_hash or hash_otp_code(otp) != reset_hash:
+            return jsonify({"success": False, "error": "Validation Error", "message": "Invalid OTP code. Please check your email and try again."}), 400
+
+        if reset_expires:
+            if isinstance(reset_expires, datetime):
+                if reset_expires.tzinfo is None:
+                    reset_expires = reset_expires.replace(tzinfo=timezone.utc)
+                if now > reset_expires:
+                    return jsonify({"success": False, "error": "Validation Error", "message": "OTP code has expired. Please request a new code."}), 400
+
+        target_user = user
+
+    # Option B: Token verification
+    elif token:
+        payload = decode_token(token)
+        if not payload or not payload.get("sub"):
+            return jsonify({"success": False, "error": "Unauthorized", "message": "Invalid or expired password reset token."}), 401
+        user_id = payload.get("sub")
+        target_user = db.users.find_one({"_id": ObjectId(user_id)})
+        if not target_user:
+            return jsonify({"success": False, "error": "Not Found", "message": "User account not found."}), 404
+
+    else:
+        return jsonify({"success": False, "error": "Validation Error", "message": "Email and OTP code (or token) are required."}), 400
+
+    hashed_pw = hash_password(new_password)
+    db.users.update_one(
+        {"_id": target_user["_id"]},
+        {
+            "$set": {"password": hashed_pw, "updated_at": datetime.now(timezone.utc)},
+            "$unset": {"reset_otp_hash": "", "reset_otp_expires_at": ""}
+        }
+    )
 
     return jsonify({
         "success": True,
-        "message": "Password has been successfully reset. You can now log in."
+        "message": "Password reset successfully! You can now log in with your new password."
     }), 200

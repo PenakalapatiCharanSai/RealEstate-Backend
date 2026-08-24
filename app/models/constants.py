@@ -2,7 +2,7 @@
 Domain constants and allowed value enumerations for Real Estate Marketplace collections.
 """
 
-USER_ROLES = ["admin", "agent", "owner", "customer"]
+USER_ROLES = ["admin", "agent", "customer"]
 DEFAULT_USER_ROLE = "customer"
 
 USER_STATUSES = ["active", "inactive", "pending_verification", "pending_approval"]
