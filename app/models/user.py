@@ -41,7 +41,10 @@ class UserModel:
         otp_hash=None,
         otp_expires_at=None,
         otp_attempts=0,
-        last_otp_sent_at=None
+        last_otp_sent_at=None,
+        google_id=None,
+        avatar_url=None,
+        auth_provider="email"
     ):
         if role not in USER_ROLES:
             raise ValueError(f"Invalid role '{role}'. Allowed roles: {USER_ROLES}")
@@ -65,6 +68,9 @@ class UserModel:
             "otp_expires_at": otp_expires_at,
             "otp_attempts": int(otp_attempts),
             "last_otp_sent_at": last_otp_sent_at,
+            "google_id": google_id,
+            "avatar_url": avatar_url,
+            "auth_provider": auth_provider,
             "created_at": datetime.now(timezone.utc),
         }
 
@@ -83,5 +89,7 @@ class UserModel:
             "status": user_doc.get("status", DEFAULT_USER_STATUS),
             "email_verified": is_verified,
             "is_verified": is_verified,
+            "avatar_url": user_doc.get("avatar_url"),
+            "auth_provider": user_doc.get("auth_provider", "email"),
             "created_at": user_doc.get("created_at").isoformat() if isinstance(user_doc.get("created_at"), datetime) else user_doc.get("created_at"),
         }

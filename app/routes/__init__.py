@@ -10,6 +10,8 @@ from .enquiry_routes import enquiry_bp
 from .visit_routes import visit_bp
 from .notification_routes import notification_bp
 from .review_routes import review_bp
+from .chat_routes import chat_bp
+from .ai_routes import ai_routes_bp
 
 __all__ = [
     "health_bp",
@@ -24,5 +26,9 @@ __all__ = [
     "visit_bp",
     "notification_bp",
     "review_bp",
+    "chat_bp",
+    "ai_routes_bp",
     "seed_default_categories",
 ]
+
+

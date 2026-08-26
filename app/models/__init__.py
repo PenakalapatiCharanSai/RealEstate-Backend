@@ -5,6 +5,7 @@ from .property_image import PropertyImageModel
 from .enquiry import EnquiryModel
 from .visit import VisitModel
 from .favorite import FavoriteModel
+from .chat import ChatConversationModel
 
 __all__ = [
     "UserModel",
@@ -15,4 +16,6 @@ __all__ = [
     "EnquiryModel",
     "VisitModel",
     "FavoriteModel",
+    "ChatConversationModel",
 ]
+

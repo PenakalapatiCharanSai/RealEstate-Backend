@@ -53,8 +53,14 @@ def create_db_indexes(db):
         db.visits.create_index([("agent_id", ASCENDING)], name="idx_visits_agent_id")
         db.visits.create_index([("status", ASCENDING)], name="idx_visits_status")
 
+        # 6. chat_conversations collection indexes
+        db.chat_conversations.create_index([("user_id", ASCENDING)], name="idx_chat_user_id")
+        db.chat_conversations.create_index([("conversation_id", ASCENDING)], unique=True, name="idx_chat_conversation_id_unique")
+        db.chat_conversations.create_index([("updated_at", DESCENDING)], name="idx_chat_updated_at")
+
         logger.info("Successfully configured all MongoDB collection indexes.")
         return True
+
     except Exception as e:
         logger.error(f"Error creating database indexes: {e}")
         return False

@@ -3,7 +3,9 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from app.config.config import Config
 from app.utils.db import init_db
-from app.routes import health_bp, auth_bp, test_rbac_bp, property_bp, category_bp, image_bp, admin_bp, favorite_bp, enquiry_bp, visit_bp, notification_bp, review_bp, seed_default_categories
+from app.routes import health_bp, auth_bp, test_rbac_bp, property_bp, category_bp, image_bp, admin_bp, favorite_bp, enquiry_bp, visit_bp, notification_bp, review_bp, chat_bp, ai_routes_bp, seed_default_categories
+
+
 from app.middleware.error_handler import register_error_handlers
 
 from app.middleware.security_middleware import apply_security_headers, request_security_guard
@@ -50,6 +52,10 @@ def create_app(config_class=Config):
     app.register_blueprint(visit_bp)
     app.register_blueprint(notification_bp)
     app.register_blueprint(review_bp)
+    app.register_blueprint(chat_bp)
+    app.register_blueprint(ai_routes_bp, url_prefix='/api/ai')
+
+
 
     # Register Secure Static File Uploads Route
     @app.route('/uploads/<path:filename>')

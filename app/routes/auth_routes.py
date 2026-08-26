@@ -164,6 +164,152 @@ def register():
         return jsonify({"success": False, "error": "Server Error", "message": f"Registration failed: {str(e)}"}), 500
 
 
+@auth_bp.route("/google", methods=["POST"])
+def google_auth():
+    """
+    Google OAuth Registration & Login Endpoint
+    Accepts Google ID Token (credential) or Google User details.
+    Verifies token with Google OAuth API, registers brand new user if not found (with email_verified=True),
+    or logs in existing user.
+    """
+    data = request.get_json() or {}
+    credential = data.get("credential") or data.get("token") or data.get("id_token")
+    role = str(data.get("role", "customer")).strip().lower()
+    if role not in PUBLIC_ALLOWED_ROLES:
+        role = "customer"
+
+    email = None
+    name = None
+    google_id = None
+    picture = None
+
+    # Try verifying Google ID Token or Access Token with Google APIs if credential is provided
+    if credential:
+        try:
+            import urllib.request
+            import json
+            req_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
+            req = urllib.request.Request(req_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    token_info = json.loads(resp.read().decode("utf-8"))
+                    email = token_info.get("email")
+                    name = token_info.get("name") or token_info.get("given_name")
+                    google_id = token_info.get("sub")
+                    picture = token_info.get("picture")
+        except Exception as err:
+            logger.warning(f"Google tokeninfo validation notice: {err}")
+
+        # Also check access_token via userinfo if tokeninfo didn't yield email
+        if not email:
+            try:
+                import urllib.request
+                import json
+                userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+                req = urllib.request.Request(userinfo_url, headers={
+                    "Authorization": f"Bearer {credential}",
+                    "User-Agent": "Mozilla/5.0"
+                })
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status == 200:
+                        token_info = json.loads(resp.read().decode("utf-8"))
+                        email = token_info.get("email")
+                        name = token_info.get("name") or token_info.get("given_name")
+                        google_id = token_info.get("sub")
+                        picture = token_info.get("picture")
+            except Exception as err:
+                logger.warning(f"Google userinfo validation notice: {err}")
+
+    # Fallback to direct payload parameters if client fetched userinfo directly
+    if not email:
+        email = str(data.get("email", "")).strip().lower()
+        name = str(data.get("name", "")).strip() or (email.split("@")[0] if email else "")
+        google_id = data.get("google_id") or data.get("sub")
+        picture = data.get("picture")
+
+    if not email or "@" not in email:
+        return jsonify({
+            "success": False,
+            "error": "Validation Error",
+            "message": "Valid Google email address is required."
+        }), 400
+
+    db = get_db()
+    if db is None:
+        return jsonify({"success": False, "error": "Database Error", "message": "Database connection unavailable."}), 500
+
+    now = datetime.now(timezone.utc)
+    user = db.users.find_one({"email": email})
+
+    if user:
+        # Existing user - update Google info if missing and mark verified
+        update_fields = {"last_login_at": now, "updated_at": now}
+        if google_id and not user.get("google_id"):
+            update_fields["google_id"] = google_id
+        if picture and not user.get("avatar_url"):
+            update_fields["avatar_url"] = picture
+        if not user.get("email_verified"):
+            update_fields["email_verified"] = True
+            update_fields["is_verified"] = True
+            if user.get("status") == "pending_verification":
+                update_fields["status"] = "pending_approval" if user.get("role") in ["agent", "owner"] else "active"
+
+        db.users.update_one({"_id": user["_id"]}, {"$set": update_fields})
+        user = db.users.find_one({"_id": user["_id"]})
+    else:
+        # Brand new user registration via Google!
+        user_status = "pending_approval" if role in ["agent", "owner"] else "active"
+        random_pw_hash = hash_password(secrets.token_hex(16))
+        
+        user_doc = UserModel.create_document(
+            name=name or email.split("@")[0],
+            email=email,
+            password=random_pw_hash,
+            phone="",
+            role=role,
+            status=user_status,
+            email_verified=True,
+            is_verified=True,
+            google_id=google_id,
+            avatar_url=picture,
+            auth_provider="google"
+        )
+
+        result = db.users.insert_one(user_doc)
+        user = db.users.find_one({"_id": result.inserted_id})
+
+        # Send welcome email
+        try:
+            send_welcome_email(user_email=email, user_name=name or email.split("@")[0], role=role)
+        except Exception as mail_err:
+            logger.error(f"[GOOGLE WELCOME EMAIL NOTICE] Error for {email}: {mail_err}")
+
+    user_id = str(user["_id"])
+    user_role = user.get("role", role)
+    user_status = user.get("status", "active")
+    formatted_user = UserModel.format_user(user)
+
+    if user_role in ["agent", "owner"] and user_status == "pending_approval":
+        return jsonify({
+            "success": True,
+            "requires_approval": True,
+            "message": "Google registration successful! Your agent account is pending administrator approval before signing in.",
+            "data": {
+                "user": formatted_user
+            }
+        }), 200
+
+    token = generate_token(user_id, user_role)
+    return jsonify({
+        "success": True,
+        "message": "Google authentication successful.",
+        "data": {
+            "token": token,
+            "user": formatted_user
+        }
+    }), 200
+
+
 @auth_bp.route("/verify-otp", methods=["POST"])
 def verify_otp():
     """

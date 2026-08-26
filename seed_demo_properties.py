@@ -177,8 +177,49 @@ DEMO_PROPERTIES = [
         ],
         "latitude": 18.5362,
         "longitude": 73.8940
+    },
+    {
+        "title": "Premium 2 BHK Apartment - Kukatpally",
+        "type_": "Apartment",
+        "transaction_type": "Sale",
+        "price": 6800000, # ₹68 Lakhs
+        "location": "Kukatpally, Hyderabad",
+        "address": "KPHB Colony, Kukatpally, Hyderabad, Telangana 500072",
+        "area": 1150,
+        "bedrooms": 2,
+        "bathrooms": 2,
+        "parking": True,
+        "furnishing": "Semi-Furnished",
+        "description": "Modern 2BHK ready-to-move apartment in Kukatpally featuring a modular kitchen, balcony view, 24/7 security, swimming pool access, lift, and covered parking.",
+        "images": [
+            "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80"
+        ],
+        "latitude": 17.4849,
+        "longitude": 78.4138
+    },
+    {
+        "title": "Gachibowli Horizon 2 BHK Apartment",
+        "type_": "Apartment",
+        "transaction_type": "Sale",
+        "price": 8500000, # ₹85 Lakhs
+        "location": "Gachibowli, Hyderabad",
+        "address": "Near ORR Exit, Gachibowli, Hyderabad, Telangana 500032",
+        "area": 1280,
+        "bedrooms": 2,
+        "bathrooms": 2,
+        "parking": True,
+        "furnishing": "Fully Furnished",
+        "description": "Spacious 2BHK luxury apartment in Gachibowli with swimming pool, gym, children play area, clubhouse, and scenic sunset view.",
+        "images": [
+            "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
+        ],
+        "latitude": 17.4401,
+        "longitude": 78.3489
     }
 ]
+
 
 def seed_agent_and_properties():
     app = create_app()

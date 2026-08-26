@@ -28,3 +28,16 @@ class Config:
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "HavenSpace Real Estate")
     EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", os.getenv("SMTP_USERNAME", "havenspace.marketplace@gmail.com"))
+
+    # AI Provider & RAG Configuration (Gemini API)
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_GENERATION_MODEL = os.getenv("GEMINI_GENERATION_MODEL", "gemini-2.0-flash")
+    GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
+    AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", 100))
+    AI_MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", 3))
+    AI_REQUEST_TIMEOUT = int(os.getenv("AI_REQUEST_TIMEOUT", 30))
+    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))
+    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 50))
+
+
